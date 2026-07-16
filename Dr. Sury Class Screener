@@ -1,0 +1,38 @@
+import yfinance as yf
+import pandas as pd
+
+# Define the tickers
+tickers = {
+    "S&P 500": "^GSPC",
+    "DJIA": "^DJI",
+    "NASDAQ": "^IXIC",
+    "10Y Yield": "^TNX",
+    "VIX": "^VIX",
+    "VVIX": "^VVIX",
+    "WTI Crude": "CL=F",
+    "Brent Crude": "BZ=F"
+}
+
+# Fetch data from start of year
+# We use a date range to ensure we have the year-start reference price
+data = yf.download(list(tickers.values()), start="2026-01-01")
+
+# Extract the most recent day and the first available day of the year
+latest = data.iloc[-1]
+year_start = data.dropna().iloc[0]
+
+print(f"{'Ticker':<15} | {'Day Open':<10} | {'Day Close':<10} | {'Day Chg':<10} | {'YTD %':<10}")
+print("-" * 65)
+
+for name, ticker in tickers.items():
+    # Retrieve specific values for the ticker
+    # yfinance returns a MultiIndex DataFrame (Price Type, Ticker)
+    curr_open = latest[('Open', ticker)]
+    curr_close = latest[('Close', ticker)]
+    start_close = year_start[('Close', ticker)]
+    
+    # Calculate metrics
+    day_change = ((curr_close / curr_open) - 1) * 100
+    ytd_change = ((curr_close / start_close) - 1) * 100
+    
+    print(f"{name:<15} | {curr_open:>9.2f} | {curr_close:>9.2f} | {day_change:>9.2f}% | {ytd_change:>9.2f}%")
