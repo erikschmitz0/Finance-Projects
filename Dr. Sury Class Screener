@@ -1,0 +1,289 @@
+"""
+Market Screener — Daily Open/Close
+------------------------------------
+Prints the most recent session's Open, Close, and the resulting intraday
+% change (Close vs. that SAME day's Open -- not vs. yesterday's close)
+for a configurable set of tickers.
+
+Meant to be run once, after the market has closed for the day.
+
+Usage:
+    python market_screener.py
+    python market_screener.py --tickers "^GSPC,^DJI,AAPL,MSFT"
+    python market_screener.py --tickers "S&P 500:^GSPC,DJIA:^DJI"
+    python market_screener.py --csv screener.csv
+    python market_screener.py --no-color
+
+Requires: pip install yfinance pandas
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+
+import pandas as pd
+import yfinance as yf
+
+# ---------------------------------------------------------------------------
+# Watchlist. Add/remove tickers here, or override at the command line with
+# --tickers "Name:SYMBOL,Name2:SYMBOL2" (or just "SYMBOL,SYMBOL2").
+# ---------------------------------------------------------------------------
+DEFAULT_WATCHLIST = {
+    "S&P 500": "^GSPC",
+    "DJIA": "^DJI",
+    "NASDAQ": "^IXIC",
+    "10Y Yield": "^TNX",
+    "VIX": "^VIX",
+    "VVIX": "^VVIX",
+    "Gold": "GC=F",
+    "WTI Crude": "CL=F",
+    "Brent Crude": "BZ=F",
+}
+
+# Some Yahoo tickers report a scaled value rather than the "real" number.
+# ^TNX/^TYX/^FVX (CBOE Treasury yield indices) are quoted at 10x the
+# actual yield (e.g. 42.79 -> 4.279%). The intraday % change math below
+# is a ratio so it's unaffected by scale, but the displayed Open/Close
+# values need correcting.
+SCALE_FACTORS = {
+    "^TNX": 0.1,
+    "^TYX": 0.1,
+    "^FVX": 0.1,
+}
+
+
+def _column(raw: pd.DataFrame, field: str, symbol: str) -> pd.Series:
+    """Pull one field/ticker series, handling both the MultiIndex columns
+    yfinance returns for multi-ticker downloads and the flat columns it
+    returns for a single ticker."""
+    if isinstance(raw.columns, pd.MultiIndex):
+        return raw[field][symbol]
+    return raw[field]
+
+
+def fetch_screener(tickers: dict[str, str], lookback_days: int = 5) -> pd.DataFrame:
+    """
+    Get the most recent session's Open/Close for each ticker in `tickers`
+    (display name -> Yahoo symbol), via a single batched historical
+    download -- no live-quote calls needed since this is meant to run
+    after the close, once the day's bar has settled.
+
+    `lookback_days` pulls a small window (default 5 calendar days) rather
+    than just 1-2, purely so weekends/holidays don't leave us with no row
+    at all; only the single most recent row per ticker is actually used.
+
+    Note: if you ever run this right at the closing bell rather than a
+    bit after, Yahoo's own feed can take a few minutes to finish
+    aggregating a composite index's final print. If a number looks off
+    immediately at the close, wait a bit and re-run before assuming the
+    script is wrong.
+    """
+    raw = yf.download(
+        list(tickers.values()),
+        period=f"{lookback_days}d",
+        interval="1d",
+        progress=False,
+        auto_adjust=False,
+    )
+
+    if raw.empty:
+        raise RuntimeError("yfinance returned no data - check tickers or network access.")
+
+    rows = []
+    for name, symbol in tickers.items():
+        try:
+            sym = pd.DataFrame(
+                {
+                    "Open": _column(raw, "Open", symbol),
+                    "Close": _column(raw, "Close", symbol),
+                }
+            ).dropna()
+
+            if sym.empty:
+                raise ValueError("no data returned for this ticker")
+
+            as_of = sym.index[-1]
+            day_open = sym["Open"].iloc[-1]
+            day_close = sym["Close"].iloc[-1]
+
+            scale = SCALE_FACTORS.get(symbol, 1)
+            # Intraday change: today's close vs. today's own open.
+            day_chg_pct = (day_close / day_open - 1) * 100
+
+            rows.append(
+                {
+                    "Name": name,
+                    "Ticker": symbol,
+                    "Date": as_of.strftime("%Y-%m-%d"),
+                    "Open": round(day_open * scale, 2),
+                    "Close": round(day_close * scale, 2),
+                    "Day %": round(day_chg_pct, 2),
+                    "Error": None,
+                }
+            )
+        except Exception as exc:  # keep one bad ticker from killing the run
+            rows.append(
+                {
+                    "Name": name,
+                    "Ticker": symbol,
+                    "Date": None,
+                    "Open": None,
+                    "Close": None,
+                    "Day %": None,
+                    "Error": str(exc),
+                }
+            )
+
+    return pd.DataFrame(rows)
+
+
+def format_table(df: pd.DataFrame, use_color: bool | None = None) -> str:
+    """
+    Render the screener as a bordered, aligned table with a colored
+    up/down arrow on the Day % column.
+
+    use_color=None auto-detects: on for an interactive terminal, off when
+    piped/redirected to a file or when NO_COLOR is set. Pass True/False
+    to force it.
+    """
+    if use_color is None:
+        use_color = os.environ.get("NO_COLOR") is None and sys.stdout.isatty()
+
+    RESET, BOLD, DIM, GREEN, RED = "\033[0m", "\033[1m", "\033[2m", "\033[32m", "\033[31m"
+
+    def fmt_num(v):
+        return f"{v:,.2f}" if pd.notna(v) else "n/a"
+
+    def fmt_pct(v):
+        if pd.isna(v):
+            return "n/a"
+        arrow = "▲" if v > 0 else "▼" if v < 0 else "▬"
+        return f"{arrow} {v:+.2f}%"
+
+    def colorize(text, v):
+        if not use_color or pd.isna(v):
+            return text
+        code = GREEN if v > 0 else RED if v < 0 else DIM
+        return f"{code}{text}{RESET}"
+
+    headers = ["Name", "Ticker", "Date", "Open", "Close", "Day %"]
+    aligns = ["l", "l", "l", "r", "r", "r"]
+
+    plain_rows, pct_values = [], []
+    for _, r in df.iterrows():
+        if pd.notna(r["Error"]):
+            plain_rows.append([str(r["Name"]), str(r["Ticker"]), "—", "—", "—", "—"])
+            pct_values.append(None)
+        else:
+            plain_rows.append(
+                [
+                    str(r["Name"]),
+                    str(r["Ticker"]),
+                    str(r["Date"]),
+                    fmt_num(r["Open"]),
+                    fmt_num(r["Close"]),
+                    fmt_pct(r["Day %"]),
+                ]
+            )
+            pct_values.append(r["Day %"])
+
+    widths = [max(len(headers[i]), max((len(row[i]) for row in plain_rows), default=0)) for i in range(len(headers))]
+
+    def pad(text, i):
+        return text.ljust(widths[i]) if aligns[i] == "l" else text.rjust(widths[i])
+
+    def rule(left, mid, right):
+        return left + mid.join("─" * (w + 2) for w in widths) + right
+
+    lines = [rule("┌", "┬", "┐")]
+    header_cells = [
+        f" {BOLD if use_color else ''}{pad(h, i)}{RESET if use_color else ''} " for i, h in enumerate(headers)
+    ]
+    lines.append("│" + "│".join(header_cells) + "│")
+    lines.append(rule("├", "┼", "┤"))
+
+    for row, pct in zip(plain_rows, pct_values):
+        cells = []
+        for i, val in enumerate(row):
+            padded = pad(val, i)
+            if i == 5 and pct is not None:
+                padded = colorize(padded, pct)
+            cells.append(f" {padded} ")
+        lines.append("│" + "│".join(cells) + "│")
+
+    lines.append(rule("└", "┴", "┘"))
+    return "\n".join(lines)
+
+
+def _enable_windows_ansi() -> None:
+    """Best-effort: turn on ANSI escape processing for older Windows
+    consoles that don't have it on by default. No-op everywhere else,
+    and never raises."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        mode = ctypes.c_uint32()
+        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+        kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    except Exception:
+        pass
+
+
+def parse_watchlist(raw: str) -> dict[str, str]:
+    """Parse '--tickers' input like 'S&P 500:^GSPC,AAPL,MSFT' into a dict."""
+    watchlist = {}
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" in item:
+            name, symbol = item.split(":", 1)
+        else:
+            name = symbol = item
+        watchlist[name.strip()] = symbol.strip()
+    return watchlist
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Daily open/close screener")
+    parser.add_argument(
+        "--tickers",
+        help='Comma-separated list, e.g. "^GSPC,^DJI" or "S&P 500:^GSPC,DJIA:^DJI". '
+        "Defaults to the built-in watchlist.",
+    )
+    parser.add_argument("--csv", help="Optional path to save results as CSV.")
+    parser.add_argument("--no-color", action="store_true", help="Disable colored output.")
+    parser.add_argument(
+        "--lookback-days",
+        type=int,
+        default=5,
+        help="Calendar days of history to pull, to bridge weekends/holidays (default 5).",
+    )
+    args = parser.parse_args()
+
+    _enable_windows_ansi()
+
+    watchlist = parse_watchlist(args.tickers) if args.tickers else DEFAULT_WATCHLIST
+    df = fetch_screener(watchlist, lookback_days=args.lookback_days)
+
+    print(format_table(df, use_color=False if args.no_color else None))
+
+    errors = df[df["Error"].notna()]
+    if not errors.empty:
+        print("\nWarnings:")
+        for _, row in errors.iterrows():
+            print(f"  {row['Name']} ({row['Ticker']}): {row['Error']}")
+
+    if args.csv:
+        df.drop(columns=["Error"]).to_csv(args.csv, index=False)
+        print(f"\nSaved to {args.csv}")
+
+
+if __name__ == "__main__":
+    main()
