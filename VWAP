@@ -1,0 +1,77 @@
+import matplotlib.pyplot as plt
+import numpy as np
+import yfinance as yf
+
+#setup
+loop = 1
+
+# 1. Download intraday ticker data (5-minute bars over the last day)
+while loop == 1:
+    ticker = input("What is the ticker?").upper()
+    try:
+        tick = yf.Ticker(ticker)
+        df = tick.history(period="1d", interval="5m")
+        if df.empty:
+            raise ValueError(f"Invalid ticker {ticker}. Check input")
+        break
+    except Exception as e:
+        print(f"Input {ticker} is invalid. Check input and try again.")
+
+# 2. Extract Typical Price (HLC/3) for the volume weighting formula
+df["Typical_Price"] = (df["High"] + df["Low"] + df["Close"]) / 3
+df["Price_x_Volume"] = df["Typical_Price"] * df["Volume"]
+
+# 3. Calculate Session-by-Session VWAP (Grouped by Calendar Day)
+# VWAP reset anchors fresh at the start of every trading day
+df["Date_Group"] = df.index.date
+
+df["Cum_PV"] = df.groupby("Date_Group")["Price_x_Volume"].cumsum()
+df["Cum_Vol"] = df.groupby("Date_Group")["Volume"].cumsum()
+df["VWAP"] = df["Cum_PV"] / df["Cum_Vol"]
+
+# 4. Compute Standard Deviation Bands
+# Measures how far standard price candles stretch away from the average liquidity anchor
+df["Price_VWAP_Sq_Dev"] = (df["Typical_Price"] - df["VWAP"]) ** 2
+df["Cum_Sq_Dev"] = df["Price_VWAP_Sq_Dev"] * df["Volume"]
+df["Cum_Sq_Dev_Sum"] = df.groupby("Date_Group")["Cum_Sq_Dev"].cumsum()
+
+df["VWAP_Std"] = np.sqrt(df["Cum_Sq_Dev_Sum"] / df["Cum_Vol"])
+
+# Map the ±1 and ±2 standard deviation bands
+df["Upper_Band_1"] = df["VWAP"] + df["VWAP_Std"]
+df["Lower_Band_1"] = df["VWAP"] - df["VWAP_Std"]
+df["Upper_Band_2"] = df["VWAP"] + (df["VWAP_Std"] * 2)
+df["Lower_Band_2"] = df["VWAP"] - (df["VWAP_Std"] * 2)
+
+# 5. Generate the Visual Chart Overlay
+plt.figure(figsize=(15, 8))
+
+# Main Price & VWAP lines
+plt.plot(df.index, df["Close"], color="#404040", label=f"{ticker} Price", alpha=0.5)
+plt.plot(df.index, df["VWAP"], color="#0066cc", label="VWAP Line", linewidth=2)
+
+# Deviation Bands
+plt.plot(
+    df.index,
+    df["Upper_Band_1"],
+    color="#00b300",
+    linestyle="--",
+    alpha=0.6,
+    label="±1 & ±2 StdDev Bands",
+)
+plt.plot(df.index, df["Lower_Band_1"], color="#00b300", linestyle="--", alpha=0.6)
+plt.plot(df.index, df["Upper_Band_2"], color="#cc0000", linestyle=":", alpha=0.5)
+plt.plot(df.index, df["Lower_Band_2"], color="#cc0000", linestyle=":", alpha=0.5)
+
+# Formatting intraday jumps
+plt.title(
+    f"{ticker} Intraday VWAP Tracker with Standard Deviation Bands", fontsize=14
+)
+plt.xlabel("Datetime (5-Minute Bars)", fontsize=12)
+plt.ylabel("Price ($)", fontsize=12)
+plt.grid(True, linestyle=":", alpha=0.5)
+plt.legend(loc="upper left")
+plt.tight_layout()
+
+# Show the chart
+plt.show()
