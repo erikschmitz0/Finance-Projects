@@ -1,0 +1,64 @@
+import yfinance as yf
+import pandas as pd
+
+def calculate_historical_var(tickers, weights, portfolio_value=100000, confidence_level=0.95, lookback_years="5y"):
+    print(f"Fetching data for {tickers}...\n")
+    
+    # 1. Download Historical Data
+    data = yf.download(tickers, period=lookback_years, progress=False)['Close']
+    
+    if data.empty:
+        print("Failed to download data.")
+        return
+
+    # 2. Calculate Daily Returns for each asset
+    # .pct_change() gives us the daily percentage movement
+    returns = data.pct_change().dropna()
+
+    # 3. Calculate Portfolio Daily Returns
+    # Multiply each asset's return by its weight in the portfolio, then sum them up
+    portfolio_returns = (returns * weights).sum(axis=1)
+
+    # 4. Sort returns from worst to best
+    sorted_returns = portfolio_returns.sort_values(ascending=True)
+
+    # 5. Find the VaR Percentile
+    # If confidence is 95%, we want the 5th percentile (0.05)
+    percentile = 1.0 - confidence_level
+    
+    # Calculate the exact VaR threshold as a percentage
+    var_percent = sorted_returns.quantile(percentile)
+    
+    # Calculate the exact VaR threshold as a dollar amount
+    var_dollars = portfolio_value * var_percent
+
+    # 6. Calculate Expected Shortfall (CVaR) - A crucial bonus metric
+    # This is the average of all losses that are WORSE than the VaR
+    tail_losses = sorted_returns[sorted_returns <= var_percent]
+    cvar_percent = tail_losses.mean()
+    cvar_dollars = portfolio_value * cvar_percent
+
+    # 7. Print the Report
+    print("=== PORTFOLIO VaR REPORT (Historical Method) ===")
+    print(f"Portfolio Value:   ${portfolio_value:,.2f}")
+    print(f"Time Horizon:      1 Trading Day")
+    print(f"Confidence Level:  {confidence_level * 100}%")
+    print(f"Data Lookback:     {len(returns)} Trading Days")
+    print("-" * 45)
+    print(f"Value at Risk (VaR):        ${abs(var_dollars):,.2f}  ({abs(var_percent)*100:.2f}%)")
+    print(f"Expected Shortfall (CVaR):  ${abs(cvar_dollars):,.2f}  ({abs(cvar_percent)*100:.2f}%)")
+    print("================================================\n")
+    
+    print("Translation:")
+    print(f"We are {confidence_level * 100}% confident that the portfolio will not lose more than ${abs(var_dollars):,.2f} in a single day.")
+    print(f"HOWEVER, on the rare {round((1-confidence_level)*100, 1)}% of days where losses DO exceed that amount, the average loss will be ${abs(cvar_dollars):,.2f}.")
+
+# Run the model
+if __name__ == "__main__":
+    # Define your portfolio here. 
+    # Example: 40% SPY (S&P 500), 40% QQQ (Tech), 20% GLD (Gold)
+    my_tickers = ['VOO','QQQ','SCHD','GLD','JPST']
+    my_weights = [0.35,0.25,0.20,0.10,0.10]  # Must sum to 1.0
+    account_size = 10000 # Ex: $10,000 portfolio
+
+    calculate_historical_var(my_tickers, my_weights, portfolio_value=account_size, confidence_level=0.95)
