@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cash Reserve Optimizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16202B; --ink-2:#3D4B5A; --ink-3:#6B7A8A;
+  --paper:#FFFFFF; --ground:#E9EDF1; --rule:#CBD4DD; --faint:#EDF0F3;
+  --accent:#1F6F5C; --warn:#A8571F; --measure:37.8rem;
+  --f-jpst:#2A6FB5; --f-shy:#1F8A63; --f-mear:#C4671F;
+  --f-boxx:#7A5AA8; --f-tflo:#B59320; --f-sgov:#5A7285; --f-sub:#A0522D; --f-jmst:#8A6D3B;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;line-height:1.5;
+  font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.wrap{max-width:1080px;margin:0 auto;padding:32px 24px 72px}
+header{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:26px}
+h1{font-size:23px;font-weight:600;letter-spacing:-.015em;margin:0 0 3px}
+header p{margin:0;color:var(--ink-3);font-size:13.5px;max-width:64ch}
+.grid{display:grid;grid-template-columns:288px 1fr;gap:26px;align-items:start}
+@media(max-width:880px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--paper);border:1px solid var(--rule)}
+.panel-h{padding:11px 16px;border-bottom:1px solid var(--rule);font-size:12.5px;font-weight:600;color:var(--ink-2)}
+.panel-b{padding:16px}
+label{display:block;font-size:12.5px;color:var(--ink-2);margin:0 0 5px;font-weight:500}
+select,input[type=text]{width:100%;padding:8px 10px;border:1px solid var(--rule);background:var(--paper);
+  font:inherit;font-size:14px;color:var(--ink);border-radius:0}
+input[type=text]{text-align:right}
+select:focus,input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.field{margin-bottom:15px}
+.hint{font-size:11.5px;color:var(--ink-3);margin:4px 0 0}
+.seg{display:flex;border:1px solid var(--rule)}
+.seg button{flex:1;padding:7px 4px;border:0;background:var(--paper);font:inherit;font-size:12.5px;
+  color:var(--ink-2);cursor:pointer;border-right:1px solid var(--rule)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--paper);font-weight:500}
+.rates{margin-top:16px;padding-top:14px;border-top:1px solid var(--rule);font-size:13px}
+.rates div{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;color:var(--ink-2);white-space:nowrap}
+.rates .th{color:var(--ink-3);font-size:11px;margin-left:4px}
+.rates .note{margin:9px 0 0;font-size:11.5px;line-height:1.45;color:var(--ink-3);white-space:normal}
+.rates strong{font-weight:600;color:var(--ink)}
+.rates .total{border-top:1px solid var(--rule);margin-top:5px;padding-top:7px}
+.verdict{background:var(--paper);border:1px solid var(--rule);border-top:4px solid var(--accent);padding:24px 26px}
+.lead{font-size:13px;color:var(--ink-3);margin:0 0 6px}
+.ticker{font-size:56px;font-weight:600;letter-spacing:-.03em;line-height:1;margin:0}
+.fullname{font-size:15px;color:var(--ink-2);margin:6px 0 0}
+.vstats{display:flex;gap:34px;margin-top:20px;flex-wrap:wrap}
+.vstat .v{font-size:25px;font-weight:500;line-height:1.1}
+.vstat .k{font-size:12px;color:var(--ink-3);margin-top:2px}
+.because{margin-top:20px;padding-top:16px;border-top:1px solid var(--rule);font-size:14px;color:var(--ink-2);max-width:var(--measure)}
+.flag{margin-top:14px;padding:11px 14px;background:#FBF4EC;border-left:3px solid var(--warn);
+  font-size:13px;color:#6C3B14;max-width:var(--measure)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:right;font-weight:500;color:var(--ink-3);padding:7px 10px;border-bottom:1px solid var(--rule);font-size:12px}
+th:first-child,td:first-child{text-align:left}
+td{padding:8px 10px;border-bottom:1px solid var(--faint);text-align:right}
+tbody tr:last-child td{border-bottom:0}
+tr.top td{background:#F3F7F5}
+tr.out td{color:var(--ink-3)}
+tr.out td:first-child{text-decoration:line-through;text-decoration-color:var(--rule)}
+.chip{display:inline-block;width:9px;height:9px;margin-right:7px}
+.why{font-size:11.5px;color:var(--ink-3)}
+.divider td{background:var(--faint);font-size:11.5px;color:var(--ink-3);text-align:left;padding:6px 10px;border-bottom:1px solid var(--rule)}
+footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--rule);font-size:12.5px;color:var(--ink-3);max-width:80ch}
+footer p{margin:0 0 8px}
+.mt{margin-top:26px}
+.asof{color:#B3261E;font-weight:500;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Cash Reserve Optimizer</h1>
+  <p>Optimal dry powder asset for a taxable investment account. Optimizes which fund earns the best after tax return without risking a drawdown or significant loss.</p>
+</header>
+
+<div class="grid">
+  <div>
+    <div class="panel">
+      <div class="panel-h">Assumptions</div>
+      <div class="panel-b">
+        <div class="field">
+          <label for="state">State of residence</label>
+          <select id="state"></select>
+        </div>
+        <div class="field">
+          <label>Filing status</label>
+          <div class="seg" id="filing">
+            <button data-v="single" aria-pressed="true">Single</button>
+            <button data-v="mfj" aria-pressed="false">Married, joint</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="income">Taxable income</label>
+          <input type="text" id="income" value="100,000" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="hold">Expected hold, in months</label>
+          <input type="text" id="hold" value="12" inputmode="numeric">
+          <p class="hint">1 to 60. How long you expect the reserve to sit before you deploy it.</p>
+        </div>
+        <div class="field">
+          <label for="amt">Reserve size</label>
+          <input type="text" id="amt" value="100,000" inputmode="numeric">
+        </div>
+        <div class="rates" id="rates"></div>
+      </div>
+    </div>
+
+    <div class="panel mt">
+      <div class="panel-h">Distributions</div>
+      <div class="panel-b">
+        <div class="seg" id="drip">
+          <button data-v="on" aria-pressed="true">Reinvest</button>
+          <button data-v="off" aria-pressed="false">Hold as cash</button>
+        </div>
+        <p class="hint" style="margin-top:11px">Reinvesting compounds each distribution at the fund's own rate. Leaving them idle earns only the sweep rate, which costs more the longer the reserve sits. BOXX pays no distributions, so this setting does not affect it.</p>
+      </div>
+    </div>
+
+    <div class="panel mt">
+      <div class="panel-h">Liquidity-Risk Rule</div>
+      <div class="panel-b">
+        <div class="seg" id="guard">
+          <button data-v="on" aria-pressed="true">Enforce</button>
+          <button data-v="off" aria-pressed="false">Ignore</button>
+        </div>
+        <p class="hint" style="margin-top:11px">A reserve has to be worth its full value on the day the opportunity appears. Funds whose duration exceeds your expected hold are excluded, because a rate move could force you to sell at a loss exactly when you need the cash.</p>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="verdict">
+      <p class="lead">Hold your reserve in</p>
+      <p class="ticker" id="v-ticker">—</p>
+      <p class="fullname" id="v-name"></p>
+      <div class="vstats">
+        <div class="vstat"><div class="v" id="v-yield">—</div><div class="k">annualized, after tax</div></div>
+        <div class="vstat"><div class="v" id="v-total">—</div><div class="k">earned over the hold</div></div>
+        <div class="vstat"><div class="v" id="v-vs">—</div><div class="k">more than a cash sweep</div></div>
+        <div class="vstat"><div class="v" id="v-dur">—</div><div class="k">duration</div></div>
+      </div>
+      <p class="because" id="v-because"></p>
+      <div class="flag" id="v-flag" style="display:none"></div>
+    </div>
+
+    <div class="panel mt">
+      <div class="panel-h">Every Candidate, by Annualized After-Tax Return</div>
+      <table>
+        <thead><tr>
+          <th>Fund</th><th>Yield</th><th>Duration</th><th>After Tax</th><th>Return</th>
+        </tr></thead>
+        <tbody id="rank"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <p>Ranking is annualized after-tax return only — no risk adjustment. Expected price change is zero, so yield is the whole of expected return; duration enters through the liquidity-risk rule rather than as a penalty. Distributing funds compound monthly when reinvested; left as cash they accrue only the 0.45% sweep, which costs more the longer the hold. BOXX distributes nothing — it compounds pre-tax internally and is taxed once on sale, so reinvestment does not apply and its deferral advantage grows with the hold.</p>
+  <p>Yields are 30-day SEC yields as of September 2026 and move constantly. State marginal rates come from simplified bracket tables and exclude local income taxes such as New York City's. BOXX assumes long-term capital gains treatment at twelve months or more; sold sooner, the gain is short-term and taxed at your ordinary marginal rate, which removes the fund's entire advantage. The IRS has not confirmed the long-term treatment and it carries recharacterization risk under IRC §1258.</p>
+  <p>An analytical tool, not financial or tax advice.</p>
+  <p class="asof" id="asof"></p>
+</footer>
+</div>
+
+<script>
+/* ─────────── MODEL INPUTS ───────────
+   To refresh: update AS_OF and the `y` value on each fund below with its
+   current 30-day SEC yield from the issuer's fact sheet. Nothing else needs
+   to change. Durations move slowly and can be left alone between updates.
+   ──────────────────────────────────── */
+const AS_OF='9/4/2026';
+
+const FUNDS=[
+ {t:'TFLO',n:'iShares Treasury Floating Rate Bond',y:3.69,d:0.01,k:'tsy',c:'--f-tflo'},
+ {t:'SGOV',n:'iShares 0–3 Month Treasury Bond',y:3.63,d:0.11,k:'tsy',c:'--f-sgov'},
+ {t:'XHLF',n:'BondBloxx Six Month Treasury',y:3.60,d:0.50,k:'tsy',c:'--f-sgov'},
+ {t:'SHY', n:'iShares 1–3 Year Treasury Bond',y:3.85,d:1.80,k:'tsy',c:'--f-shy'},
+ {t:'IEF', n:'iShares 7–10 Year Treasury Bond',y:4.10,d:7.00,k:'tsy',c:'--f-sgov'},
+ {t:'TLT', n:'iShares 20+ Year Treasury Bond',y:4.89,d:15.31,k:'tsy',c:'--f-sgov'},
+ {t:'JPST',n:'JPMorgan Ultra-Short Income',y:3.95,d:0.30,k:'ord',c:'--f-jpst'},
+ {t:'BOXX',n:'Alpha Architect 1–3 Month Box',y:3.55,d:0.10,k:'ltcg',c:'--f-boxx'},
+ {t:'JMST',n:'JPMorgan Ultra-Short Municipal Income',y:2.53,d:0.90,k:'muni',c:'--f-jmst'},
+ {t:'MEAR',n:'iShares Short Maturity Municipal Bond',y:2.72,d:1.50,k:'muni',c:'--f-mear'},
+ {t:'SUB', n:'iShares Short-Term National Muni Bond',y:2.65,d:2.00,k:'muni',c:'--f-sub'},
+];
+const SWEEP=0.45;
+const FED={single:[[12400,.10],[50400,.12],[105700,.22],[201775,.24],[256225,.32],[640600,.35],[Infinity,.37]],
+           mfj:[[24800,.10],[100800,.12],[211400,.22],[403550,.24],[512450,.32],[768700,.35],[Infinity,.37]]};
+const LTCG={single:[[49450,0],[545500,.15],[Infinity,.20]],mfj:[[98900,0],[613700,.15],[Infinity,.20]]};
+const NIIT_T={single:200000,mfj:250000};
+function lookup(t,x){for(const[c,r]of t)if(x<=c)return r;return t[t.length-1][1];}
+const ST={
+ AL:{n:'Alabama',g:[[500,.02],[3000,.04],[Infinity,.05]]},AK:{n:'Alaska',f:0},
+ AZ:{n:'Arizona',f:.025},AR:{n:'Arkansas',g:[[4500,.02],[Infinity,.039]]},
+ CA:{n:'California',g:[[10756,.01],[25499,.02],[40245,.04],[55866,.06],[70606,.08],[360659,.093],[432787,.103],[721314,.113],[1000000,.123],[Infinity,.133]]},
+ CO:{n:'Colorado',f:.044},CT:{n:'Connecticut',g:[[10000,.02],[50000,.045],[100000,.055],[200000,.06],[250000,.065],[500000,.069],[Infinity,.0699]]},
+ DE:{n:'Delaware',g:[[5000,.022],[10000,.039],[20000,.048],[25000,.052],[60000,.0555],[Infinity,.066]]},
+ DC:{n:'District of Columbia',g:[[10000,.04],[40000,.06],[60000,.065],[250000,.085],[500000,.0925],[1000000,.0975],[Infinity,.1075]]},
+ FL:{n:'Florida',f:0},GA:{n:'Georgia',f:.0519},
+ HI:{n:'Hawaii',g:[[9600,.014],[14400,.032],[19200,.055],[24000,.064],[36000,.068],[48000,.072],[125000,.0776],[175000,.079],[225000,.0825],[275000,.09],[325000,.10],[Infinity,.11]]},
+ ID:{n:'Idaho',f:.05695},IL:{n:'Illinois',f:.0495},IN:{n:'Indiana',f:.03},IA:{n:'Iowa',f:.038},
+ KS:{n:'Kansas',g:[[23000,.052],[Infinity,.0558]]},KY:{n:'Kentucky',f:.035},LA:{n:'Louisiana',f:.03},
+ ME:{n:'Maine',g:[[26800,.058],[63450,.0675],[Infinity,.0715]]},
+ MD:{n:'Maryland',g:[[1000,.02],[2000,.03],[3000,.04],[100000,.0475],[125000,.05],[150000,.0525],[250000,.055],[Infinity,.0575]]},
+ MA:{n:'Massachusetts',g:[[1000000,.05],[Infinity,.09]]},MI:{n:'Michigan',f:.0425},
+ MN:{n:'Minnesota',g:[[32570,.0535],[106990,.068],[198630,.0785],[Infinity,.0985]]},
+ MS:{n:'Mississippi',f:.044},MO:{n:'Missouri',g:[[8911,.02],[Infinity,.047]]},
+ MT:{n:'Montana',g:[[21100,.047],[Infinity,.059]]},
+ NE:{n:'Nebraska',g:[[3900,.0246],[23310,.0351],[37580,.0501],[Infinity,.052]]},
+ NV:{n:'Nevada',f:0},NH:{n:'New Hampshire',f:0},
+ NJ:{n:'New Jersey',g:[[20000,.014],[35000,.0175],[40000,.035],[75000,.05525],[500000,.0637],[1000000,.0897],[Infinity,.1075]]},
+ NM:{n:'New Mexico',g:[[5500,.017],[16500,.032],[33500,.047],[66500,.049],[210000,.049],[Infinity,.059]]},
+ NY:{n:'New York',g:[[8500,.04],[11700,.045],[13900,.0525],[80650,.055],[215400,.06],[1077550,.0685],[5000000,.0965],[25000000,.103],[Infinity,.109]]},
+ NC:{n:'North Carolina',f:.0399},ND:{n:'North Dakota',g:[[48475,0],[244825,.0195],[Infinity,.025]]},
+ OH:{n:'Ohio',g:[[26050,0],[100000,.0275],[Infinity,.035]]},OK:{n:'Oklahoma',g:[[7200,.0225],[Infinity,.0475]]},
+ OR:{n:'Oregon',g:[[4300,.0475],[10750,.0675],[125000,.0875],[Infinity,.099]]},
+ PA:{n:'Pennsylvania',f:.0307},RI:{n:'Rhode Island',g:[[79900,.0375],[181650,.0475],[Infinity,.0599]]},
+ SC:{n:'South Carolina',g:[[3560,0],[17830,.03],[Infinity,.062]]},SD:{n:'South Dakota',f:0},
+ TN:{n:'Tennessee',f:0},TX:{n:'Texas',f:0},UT:{n:'Utah',f:.0455},
+ VT:{n:'Vermont',g:[[45400,.0335],[110050,.066],[229550,.076],[Infinity,.0875]]},
+ VA:{n:'Virginia',g:[[3000,.02],[5000,.03],[17000,.05],[Infinity,.0575]]},
+ WA:{n:'Washington',f:0},
+ WV:{n:'West Virginia',g:[[10000,.0222],[25000,.0296],[40000,.0333],[60000,.0444],[Infinity,.0482]]},
+ WI:{n:'Wisconsin',g:[[14680,.035],[29370,.044],[323290,.053],[Infinity,.0765]]},WY:{n:'Wyoming',f:0}};
+function stateRate(code,inc,filing){
+  const s=ST[code];if(!s)return 0;if(s.f!==undefined)return s.f;
+  return lookup(s.g, filing==='mfj'?inc/2:inc);
+}
+/* annualized after-tax return, no risk term */
+function annual(f,fed,niit,st,T,ltcg,drip){
+  if(f.k==='ltcg'){
+    const rate=(T>=1?ltcg:fed)+niit+st;
+    const gross=Math.pow(1+f.y/100,T)-1;              // compounds pre-tax, taxed once on sale
+    return (Math.pow(1+gross*(1-rate),1/T)-1)*100;
+  }
+  let aty;
+  if(f.k==='tsy')       aty=f.y*(1-fed-niit);
+  else if(f.k==='muni') aty=f.y*(1-st);
+  else                  aty=f.y*(1-fed-niit-st);
+  const n=Math.max(1,Math.round(T*12)), m=aty/1200;
+  if(drip) return (Math.pow(Math.pow(1+m,n),1/T)-1)*100;
+  const s=SWEEP*(1-fed-niit-st)/1200;                 // idle distributions earn the sweep
+  const factor=s>1e-12?((Math.pow(1+s,n)-1)/s):n;
+  return (Math.pow(1+m*factor,1/T)-1)*100;
+}
+const $=id=>document.getElementById(id);
+const sel=$('state');
+Object.keys(ST).sort((a,b)=>ST[a].n.localeCompare(ST[b].n)).forEach(c=>{
+  const o=document.createElement('option');o.value=c;o.textContent=ST[c].n;if(c==='TX')o.selected=true;sel.appendChild(o);});
+let filing='single', guard=true, drip=true;
+function seg(id,cb){$(id).addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  [...$(id).children].forEach(x=>x.setAttribute('aria-pressed',x===b));cb(b.dataset.v);render();});}
+seg('filing',v=>filing=v);
+seg('guard',v=>guard=(v==='on'));
+seg('drip',v=>drip=(v==='on'));
+function digits(el){return parseFloat(el.value.replace(/[^0-9.]/g,''))||0;}
+function commafy(id,max){
+  $(id).addEventListener('input',e=>{
+    let raw=e.target.value.replace(/[^0-9]/g,'');
+    if(raw){let v=parseInt(raw,10);if(max&&v>max)v=max;e.target.value=max?String(v):v.toLocaleString('en-US');}
+    else e.target.value='';
+    render();
+  });
+  $(id).addEventListener('blur',()=>{if(!digits($(id)))$(id).value=max?'1':'0';render();});
+}
+commafy('income');commafy('amt');commafy('hold',60);
+sel.addEventListener('change',render);
+
+function render(){
+  const inc=digits($('income')), months=Math.max(1,Math.min(60,digits($('hold'))||1));
+  const T=months/12, amt=digits($('amt'));
+  const fed=lookup(FED[filing],inc);
+  const niit=inc>NIIT_T[filing]?0.038:0;
+  const st=stateRate(sel.value,inc,filing);
+  const ltcg=lookup(LTCG[filing],inc);
+  const cs=getComputedStyle(document.documentElement), col=v=>cs.getPropertyValue(v).trim();
+
+  $('rates').innerHTML=
+   `<div><span>Federal marginal</span><strong>${(fed*100).toFixed(0)}%</strong></div>`+
+   `<div><span>Net investment income tax${niit?'':'<span class="th">(over $'+Math.round(NIIT_T[filing]/1000)+'k)</span>'}</span><strong>${niit?'3.8%':'—'}</strong></div>`+
+   `<div><span>State marginal</span><strong>${(st*100).toFixed(2)}%</strong></div>`+
+   `<div><span>${months>=12?'Long-term':'Short-term'} capital gains</span><strong>${((months>=12?ltcg:fed)*100).toFixed(0)}%</strong></div>`+
+   `<div class="total"><span>Combined on interest</span><strong>${((fed+niit+st)*100).toFixed(1)}%</strong></div>`+
+   (months<12?`<p class="note">Held under 12 months, gains are short-term and taxed as ordinary income.</p>`:'');
+
+  const rows=FUNDS.map(f=>{
+    const v=annual(f,fed,niit,st,T,ltcg,drip);
+    return {f,v,ok:f.d<=T+1e-9,dollars:amt*(Math.pow(1+v/100,T)-1)};
+  }).sort((a,b)=>b.v-a.v);
+
+  const pool=guard?rows.filter(r=>r.ok):rows;
+  const best=pool[0]||rows[0];
+  const runner=pool[1];
+
+  $('v-ticker').textContent=best.f.t;
+  $('v-ticker').style.color=col(best.f.c);
+  document.querySelector('.verdict').style.borderTopColor=col(best.f.c);
+  $('v-name').textContent=best.f.n;
+  $('v-yield').textContent=best.v.toFixed(2)+'%';
+  $('v-total').textContent='$'+Math.round(best.dollars).toLocaleString('en-US');
+  const sweep=amt*(Math.pow(1+SWEEP*(1-fed-niit-st)/100,T)-1);
+  $('v-vs').textContent='+$'+Math.round(best.dollars-sweep).toLocaleString('en-US');
+  $('v-dur').textContent=best.f.d.toFixed(2)+'y';
+
+  /* explanation */
+  const p=[];
+  if(best.f.k==='muni')p.push('Municipal interest is exempt from federal tax. At '+((fed+niit)*100).toFixed(1)+'% federal that exemption is worth more than the higher headline yields on taxable funds.');
+  else if(best.f.k==='ltcg')p.push('Held '+months+' months, the box-spread structure compounds pre-tax and is taxed once on sale at '+(ltcg*100).toFixed(0)+'% rather than annually at '+((fed+niit+st)*100).toFixed(1)+'%.');
+  else if(best.f.k==='tsy'&&st>0.01)p.push('Treasury interest escapes your '+(st*100).toFixed(2)+'% state tax, which is worth more than the extra yield on corporate or national municipal funds.');
+  else if(best.f.k==='tsy')p.push('At your rates the tax shelters give up more yield than they save, so the plain Treasury fund wins on yield alone.');
+  else p.push('Your combined rate is low enough that the credit spread survives taxation, and no exemption beats simply earning more.');
+  if(runner&&(best.v-runner.v)<0.05)p.push('The margin over '+runner.f.t+' is under five basis points — treat them as interchangeable.');
+  else if(runner)p.push('It beats '+runner.f.t+', the next eligible fund, by '+Math.round((best.v-runner.v)*100)+' basis points a year.');
+  $('v-because').textContent=p.join(' ');
+
+  /* liquidity flag */
+  const top=rows[0];
+  const flag=$('v-flag');
+  if(guard&&top.f.t!==best.f.t){
+    const loss=(top.f.d*1)*1;
+    flag.style.display='block';
+    flag.innerHTML=top.f.t+' yields more — '+top.v.toFixed(2)+'% after tax — but carries '+top.f.d.toFixed(2)+
+      ' years of duration against a '+months+'-month hold. A one-point rise in rates would cut roughly '+
+      loss.toFixed(1)+'% from its price, about $'+Math.round(amt*loss/100).toLocaleString('en-US')+
+      ' on this reserve, and you would be selling into that loss on the day you wanted to deploy.';
+  } else if(!guard&&best.f.d>T){
+    flag.style.display='block';
+    flag.innerHTML='The liquidity-risk rule is off. '+best.f.t+' carries '+best.f.d.toFixed(2)+
+      ' years of duration against a '+months+'-month hold — a one-point rate rise would cut about $'+
+      Math.round(amt*best.f.d/100).toLocaleString('en-US')+' from this reserve, realized if you deploy on schedule.';
+  } else flag.style.display='none';
+
+  /* table */
+  let html='', shown=false;
+  rows.forEach((r,i)=>{
+    const excl=guard&&!r.ok;
+    if(excl&&!shown){html+=`<tr class="divider"><td colspan="5">Excluded — duration longer than a ${months}-month hold</td></tr>`;shown=true;}
+    html+=`<tr class="${r.f.t===best.f.t?'top':''} ${excl?'out':''}">
+      <td><span class="chip" style="background:${col(r.f.c)}"></span>${r.f.t}</td>
+      <td>${r.f.y.toFixed(2)}%</td>
+      <td>${r.f.d.toFixed(2)}y</td>
+      <td><strong>${r.v.toFixed(2)}%</strong></td>
+      <td>$${Math.round(r.dollars).toLocaleString('en-US')}</td></tr>`;
+  });
+  if(guard){
+    const a=rows.filter(r=>r.ok), b=rows.filter(r=>!r.ok);
+    html='';shown=false;
+    a.forEach(r=>{html+=row(r,best,col,false);});
+    if(b.length){html+=`<tr class="divider"><td colspan="5">Excluded — duration exceeds a ${months}-month hold</td></tr>`;
+      b.forEach(r=>{html+=row(r,best,col,true);});}
+  }
+  $('rank').innerHTML=html;
+}
+function row(r,best,col,out){
+  return `<tr class="${r.f.t===best.f.t?'top':''}${out?' out':''}">
+    <td><span class="chip" style="background:${col(r.f.c)}"></span>${r.f.t}</td>
+    <td>${r.f.y.toFixed(2)}%</td>
+    <td>${r.f.d.toFixed(2)}y</td>
+    <td><strong>${r.v.toFixed(2)}%</strong></td>
+    <td>$${Math.round(r.dollars).toLocaleString('en-US')}</td></tr>`;
+}
+
+document.getElementById('asof').textContent='All data as of '+AS_OF;
+render();
+</script>
+</body>
+</html>
