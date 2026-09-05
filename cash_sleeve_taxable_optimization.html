@@ -70,6 +70,12 @@ tr.out td:first-child{text-decoration:line-through;text-decoration-color:var(--r
 footer{margin-top:28px;padding-top:16px;border-top:1px solid var(--rule);font-size:12.5px;color:var(--ink-3);max-width:80ch}
 footer p{margin:0 0 8px}
 .mt{margin-top:26px}
+.panel-h.row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.sortseg{display:flex;border:1px solid var(--rule)}
+.sortseg button{padding:3px 10px;border:0;background:var(--paper);font:inherit;font-size:11.5px;
+  font-weight:400;color:var(--ink-3);cursor:pointer;border-right:1px solid var(--rule)}
+.sortseg button:last-child{border-right:0}
+.sortseg button[aria-pressed=true]{background:var(--ink);color:var(--paper);font-weight:500}
 .asof{color:#B3261E;font-weight:500;margin-top:12px}
 </style>
 </head>
@@ -104,7 +110,7 @@ footer p{margin:0 0 8px}
         <div class="field">
           <label for="hold">Expected hold, in months</label>
           <input type="text" id="hold" value="12" inputmode="numeric">
-          <p class="hint">1 to 60. How long you expect the reserve to sit before you deploy it.</p>
+          <p class="hint">1 to 24. How long you expect the reserve to sit before you deploy it.</p>
         </div>
         <div class="field">
           <label for="amt">Reserve size</label>
@@ -132,7 +138,7 @@ footer p{margin:0 0 8px}
           <button data-v="on" aria-pressed="true">Enforce</button>
           <button data-v="off" aria-pressed="false">Ignore</button>
         </div>
-        <p class="hint" style="margin-top:11px">A reserve has to be worth its full value on the day the opportunity appears. Funds whose duration exceeds your expected hold are excluded, because a rate move could force you to sell at a loss exactly when you need the cash.</p>
+        <p class="hint" style="margin-top:11px">A reserve has to be worth its full value on the day the opportunity appears. Funds whose duration exceeds your expected hold are excluded — more duration than you have time is price risk you cannot wait out. A rolling fund's duration is permanent.</p>
       </div>
     </div>
   </div>
@@ -153,7 +159,12 @@ footer p{margin:0 0 8px}
     </div>
 
     <div class="panel mt">
-      <div class="panel-h">Every Candidate, by Annualized After-Tax Return</div>
+      <div class="panel-h row"><span>Every Candidate</span>
+        <div class="sortseg" id="sort">
+          <button data-v="ret" aria-pressed="true">After tax</button>
+          <button data-v="dur" aria-pressed="false">Duration</button>
+        </div>
+      </div>
       <table>
         <thead><tr>
           <th>Fund</th><th>Yield</th><th>Duration</th><th>After Tax</th><th>Return</th>
@@ -165,7 +176,7 @@ footer p{margin:0 0 8px}
 </div>
 
 <footer>
-  <p>Ranking is annualized after-tax return only — no risk adjustment. Expected price change is zero, so yield is the whole of expected return; duration enters through the liquidity-risk rule rather than as a penalty. Distributing funds compound monthly when reinvested; left as cash they accrue only the 0.45% sweep, which costs more the longer the hold. BOXX distributes nothing — it compounds pre-tax internally and is taxed once on sale, so reinvestment does not apply and its deferral advantage grows with the hold.</p>
+  <p>Ranking is annualized after-tax return only — no risk adjustment. Expected price change is zero, so yield is the whole of expected return; duration enters through the liquidity-risk rule rather than as a penalty: a fund is excluded when its duration exceeds the holding period, which ranks relative price risk without needing an assumption about how volatile rates will be. Distributing funds compound monthly when reinvested; left as cash they accrue only the 0.45% sweep, which costs more the longer the hold. BOXX distributes nothing — it compounds pre-tax internally and is taxed once on sale, so reinvestment does not apply and its deferral advantage grows with the hold.</p>
   <p>Yields are 30-day SEC yields as of September 2026 and move constantly. State marginal rates come from simplified bracket tables and exclude local income taxes such as New York City's. BOXX assumes long-term capital gains treatment at twelve months or more; sold sooner, the gain is short-term and taxed at your ordinary marginal rate, which removes the fund's entire advantage. The IRS has not confirmed the long-term treatment and it carries recharacterization risk under IRC §1258.</p>
   <p>An analytical tool, not financial or tax advice.</p>
   <p class="asof" id="asof"></p>
@@ -175,20 +186,37 @@ footer p{margin:0 0 8px}
 <script>
 /* ─────────── MODEL INPUTS ───────────
    To refresh: update AS_OF and the `y` value on each fund below with its
-   current 30-day SEC yield from the issuer's fact sheet. Nothing else needs
-   to change. Durations move slowly and can be left alone between updates.
+   current 30-day SEC yield from the issuer's fact sheet. Durations move slowly
+   and can be left alone between updates.
+
+   Sourced from issuer fact sheets, 1-3 Sep 2026: TFLO, SGOV, XHLF, ICSH, VUSB,
+   JMST, MEAR, SUB, SHY, IEF, TLT.
+   Estimated: JPST (from its 4.16-4.22% distribution yield), VBIL and BIL (from
+   SGOV less the fee gap), VUSXX (7-day SEC), BOXX (implied box-spread rate,
+   the fund publishes no SEC yield since it makes no distributions).
+
    ──────────────────────────────────── */
 const AS_OF='9/4/2026';
 
 const FUNDS=[
- {t:'TFLO',n:'iShares Treasury Floating Rate Bond',y:3.69,d:0.01,k:'tsy',c:'--f-tflo'},
- {t:'SGOV',n:'iShares 0–3 Month Treasury Bond',y:3.63,d:0.11,k:'tsy',c:'--f-sgov'},
- {t:'XHLF',n:'BondBloxx Six Month Treasury',y:3.60,d:0.50,k:'tsy',c:'--f-sgov'},
+ /* ---- Treasury, perpetual ---- */
+ {t:'TFLO',n:'iShares Treasury Floating Rate Bond',y:3.67,d:0.01,k:'tsy',c:'--f-tflo'},
+ {t:'VBIL',n:'Vanguard 0–3 Month Treasury Bill',y:3.55,d:0.10,k:'tsy',c:'--f-sgov'},
+ {t:'BIL', n:'SPDR Bloomberg 1–3 Month T-Bill',y:3.49,d:0.08,k:'tsy',c:'--f-sgov'},
+ {t:'SGOV',n:'iShares 0–3 Month Treasury Bond',y:3.53,d:0.11,k:'tsy',c:'--f-sgov'},
+ {t:'XHLF',n:'BondBloxx Six Month Treasury',y:3.75,d:0.49,k:'tsy',c:'--f-sgov'},
  {t:'SHY', n:'iShares 1–3 Year Treasury Bond',y:3.85,d:1.80,k:'tsy',c:'--f-shy'},
  {t:'IEF', n:'iShares 7–10 Year Treasury Bond',y:4.10,d:7.00,k:'tsy',c:'--f-sgov'},
  {t:'TLT', n:'iShares 20+ Year Treasury Bond',y:4.89,d:15.31,k:'tsy',c:'--f-sgov'},
- {t:'JPST',n:'JPMorgan Ultra-Short Income',y:3.95,d:0.30,k:'ord',c:'--f-jpst'},
+ /* ---- money market, effectively zero duration ---- */
+ {t:'VUSXX',n:'Vanguard Treasury Money Market',y:3.60,d:0.05,k:'tsy',c:'--f-tflo'},
+ /* ---- investment-grade credit, perpetual ---- */
+ {t:'ICSH',n:'iShares Ultra Short Duration Bond',y:4.17,d:0.69,k:'ord',c:'--f-jpst'},
+ {t:'JPST',n:'JPMorgan Ultra-Short Income',y:4.15,d:0.30,k:'ord',c:'--f-jpst'},
+ {t:'VUSB',n:'Vanguard Ultra-Short Bond',y:4.31,d:1.00,k:'ord',c:'--f-jpst'},
+ /* ---- option-structure ---- */
  {t:'BOXX',n:'Alpha Architect 1–3 Month Box',y:3.55,d:0.10,k:'ltcg',c:'--f-boxx'},
+ /* ---- municipal, perpetual ---- */
  {t:'JMST',n:'JPMorgan Ultra-Short Municipal Income',y:2.53,d:0.90,k:'muni',c:'--f-jmst'},
  {t:'MEAR',n:'iShares Short Maturity Municipal Bond',y:2.72,d:1.50,k:'muni',c:'--f-mear'},
  {t:'SUB', n:'iShares Short-Term National Muni Bond',y:2.65,d:2.00,k:'muni',c:'--f-sub'},
@@ -253,16 +281,27 @@ function annual(f,fed,niit,st,T,ltcg,drip){
   const factor=s>1e-12?((Math.pow(1+s,n)-1)/s):n;
   return (Math.pow(1+m*factor,1/T)-1)*100;
 }
+/* ── Rate risk ──────────────────────────────────────────────────────────
+   Duration is the price move per one-point change in rates, so comparing it
+   against the holding period ranks relative price risk directly: a fund with
+   more duration than you have time is taking risk you cannot wait out.
+
+   Every fund here is perpetual — it rolls rather than matures, so its duration
+   is permanent. Holding longer does not reduce exposure to a rate move on the
+   day you sell; it banks more yield to absorb one.
+   ──────────────────────────────────────────────────────────────────────── */
+
 const $=id=>document.getElementById(id);
 const sel=$('state');
 Object.keys(ST).sort((a,b)=>ST[a].n.localeCompare(ST[b].n)).forEach(c=>{
   const o=document.createElement('option');o.value=c;o.textContent=ST[c].n;if(c==='TX')o.selected=true;sel.appendChild(o);});
-let filing='single', guard=true, drip=true;
+let filing='single', guard=true, drip=true, sortBy='ret';
 function seg(id,cb){$(id).addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
   [...$(id).children].forEach(x=>x.setAttribute('aria-pressed',x===b));cb(b.dataset.v);render();});}
 seg('filing',v=>filing=v);
 seg('guard',v=>guard=(v==='on'));
 seg('drip',v=>drip=(v==='on'));
+seg('sort',v=>sortBy=v);
 function digits(el){return parseFloat(el.value.replace(/[^0-9.]/g,''))||0;}
 function commafy(id,max){
   $(id).addEventListener('input',e=>{
@@ -273,11 +312,11 @@ function commafy(id,max){
   });
   $(id).addEventListener('blur',()=>{if(!digits($(id)))$(id).value=max?'1':'0';render();});
 }
-commafy('income');commafy('amt');commafy('hold',60);
+commafy('income');commafy('amt');commafy('hold',24);
 sel.addEventListener('change',render);
 
 function render(){
-  const inc=digits($('income')), months=Math.max(1,Math.min(60,digits($('hold'))||1));
+  const inc=digits($('income')), months=Math.max(1,Math.min(24,digits($('hold'))||1));
   const T=months/12, amt=digits($('amt'));
   const fed=lookup(FED[filing],inc);
   const niit=inc>NIIT_T[filing]?0.038:0;
@@ -295,12 +334,14 @@ function render(){
 
   const rows=FUNDS.map(f=>{
     const v=annual(f,fed,niit,st,T,ltcg,drip);
-    return {f,v,ok:f.d<=T+1e-9,dollars:amt*(Math.pow(1+v/100,T)-1)};
+    return {f,v,de:f.d,ok:f.d<=T+1e-9,dollars:amt*(Math.pow(1+v/100,T)-1)};
   }).sort((a,b)=>b.v-a.v);
 
+  /* the recommendation is always the best after-tax return; sortBy only reorders the table */
   const pool=guard?rows.filter(r=>r.ok):rows;
   const best=pool[0]||rows[0];
   const runner=pool[1];
+  const ordered=sortBy==='dur'?rows.slice().sort((a,b)=>a.f.d-b.f.d||b.v-a.v):rows;
 
   $('v-ticker').textContent=best.f.t;
   $('v-ticker').style.color=col(best.f.c);
@@ -341,23 +382,16 @@ function render(){
   } else flag.style.display='none';
 
   /* table */
-  let html='', shown=false;
-  rows.forEach((r,i)=>{
-    const excl=guard&&!r.ok;
-    if(excl&&!shown){html+=`<tr class="divider"><td colspan="5">Excluded — duration longer than a ${months}-month hold</td></tr>`;shown=true;}
-    html+=`<tr class="${r.f.t===best.f.t?'top':''} ${excl?'out':''}">
-      <td><span class="chip" style="background:${col(r.f.c)}"></span>${r.f.t}</td>
-      <td>${r.f.y.toFixed(2)}%</td>
-      <td>${r.f.d.toFixed(2)}y</td>
-      <td><strong>${r.v.toFixed(2)}%</strong></td>
-      <td>$${Math.round(r.dollars).toLocaleString('en-US')}</td></tr>`;
-  });
+  let html='';
   if(guard){
-    const a=rows.filter(r=>r.ok), b=rows.filter(r=>!r.ok);
-    html='';shown=false;
-    a.forEach(r=>{html+=row(r,best,col,false);});
-    if(b.length){html+=`<tr class="divider"><td colspan="5">Excluded — duration exceeds a ${months}-month hold</td></tr>`;
-      b.forEach(r=>{html+=row(r,best,col,true);});}
+    const inc2=ordered.filter(r=>r.ok), exc=ordered.filter(r=>!r.ok);
+    inc2.forEach(r=>{html+=row(r,best,col,false);});
+    if(exc.length){
+      html+=`<tr class="divider"><td colspan="5">Excluded — duration exceeds a ${months}-month hold</td></tr>`;
+      exc.forEach(r=>{html+=row(r,best,col,true);});
+    }
+  } else {
+    ordered.forEach(r=>{html+=row(r,best,col,false);});
   }
   $('rank').innerHTML=html;
 }
